@@ -1,0 +1,205 @@
+:root {
+  --bg: #050509;
+  --bg-panel: #0f0f18;
+  --accent: #b36cff;
+  --text-main: #f5f5f5;
+  --text-muted: #aaaaaa;
+  --border-subtle: #272738;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
+    sans-serif;
+  background: radial-gradient(circle at top, #1a1035 0, #050509 55%);
+  color: var(--text-main);
+}
+
+.app-header {
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--border-subtle);
+  backdrop-filter: blur(12px);
+  background: rgba(5, 5, 9, 0.85);
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 1.6rem;
+}
+
+.app-header p {
+  margin: 0.4rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr) 300px;
+  height: calc(100vh - 72px);
+}
+
+.panel {
+  background: var(--bg-panel);
+  border-left: 1px solid var(--border-subtle);
+  padding: 0.75rem 1rem;
+  overflow-y: auto;
+}
+
+.panel-left {
+  border-left: none;
+  border-right: 1px solid var(--border-subtle);
+}
+
+.panel h2 {
+  margin-top: 0;
+  font-size: 1rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+#searchInput {
+  width: 100%;
+  padding: 0.4rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
+  background-color: #050509;
+  color: var(--text-main);
+  margin-bottom: 0.4rem;
+}
+
+#searchButton {
+  width: 100%;
+  padding: 0.35rem 0.5rem;
+  margin-bottom: 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+#searchButton:hover {
+  background: rgba(179, 108, 255, 0.16);
+}
+
+.featured-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+}
+
+.track-card {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.35rem 0.4rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.16s ease;
+}
+
+.track-card:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.track-card img {
+  width: 38px;
+  height: 38px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.track-meta {
+  display: flex;
+  flex-direction: column;
+}
+
+.track-meta strong {
+  font-size: 0.85rem;
+}
+
+.track-meta span {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.map-container {
+  position: relative;
+  overflow: hidden;
+}
+
+.map-title {
+  padding: 0.6rem 0.8rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+#graph {
+  width: 100%;
+  height: calc(100% - 40px);
+  min-height: 260px; /* ensure visible area for debugging */
+  border: 1px dashed rgba(255,255,255,0.06); /* debug border to show graph container */
+}
+
+.graph-empty {
+  color: var(--text-muted);
+  padding: 1rem;
+  font-size: 0.95rem;
+}
+
+#infoContent {
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.info-section {
+  margin-bottom: 0.8rem;
+}
+
+.info-label {
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-bottom: 0.25rem;
+}
+
+.info-main {
+  color: var(--text-main);
+}
+
+audio {
+  width: 100%;
+  margin-top: 0.4rem;
+}
+
+.genre-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.15rem 0.5rem;
+  margin: 0 0.25rem 0.25rem 0;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-main);
+  font-size: 0.75rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.genre-chip:hover {
+  border-color: var(--accent);
+  background: rgba(179, 108, 255, 0.12);
+}

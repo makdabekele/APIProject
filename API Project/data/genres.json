@@ -1,0 +1,88 @@
+{
+  "genreMappings": {
+    "uk hip hop": "UK rap",
+    "british hip hop": "UK rap",
+    "uk rap": "UK rap",
+    "grime": "Grime",
+    "uk drill": "Drill",
+    "drill": "Drill",
+    "jungle": "Jungle",
+    "drum and bass": "Jungle & DnB",
+    "uk garage": "UK garage",
+    "2-step garage": "UK garage",
+    "dancehall": "Dancehall",
+    "reggae": "Reggae"
+  },
+
+  "genreGraph": [
+    { "id": "Reggae", "parents": [], "region": "Caribbean/UK", "decade": "1960s–" },
+    {
+      "id": "Dancehall",
+      "parents": ["Reggae"],
+      "region": "Jamaica/UK",
+      "decade": "1970s–"
+    },
+    {
+      "id": "Sound system culture",
+      "parents": ["Reggae", "Dancehall"],
+      "region": "UK",
+      "decade": "1950s–"
+    },
+    {
+      "id": "Jungle",
+      "parents": ["Sound system culture"],
+      "region": "UK",
+      "decade": "1990s"
+    },
+    {
+      "id": "Jungle & DnB",
+      "parents": ["Jungle"],
+      "region": "UK",
+      "decade": "1990s–"
+    },
+    {
+      "id": "UK garage",
+      "parents": ["House", "Jungle"],
+      "region": "UK",
+      "decade": "1990s"
+    },
+    {
+      "id": "Grime",
+      "parents": ["UK garage", "Jungle", "Hip hop"],
+      "region": "UK",
+      "decade": "2000s"
+    },
+    {
+      "id": "UK rap",
+      "parents": ["Hip hop", "Dancehall"],
+      "region": "UK",
+      "decade": "2000s–"
+    },
+    {
+      "id": "Drill",
+      "parents": ["Trap", "UK rap", "Grime"],
+      "region": "US/UK",
+      "decade": "2010s–"
+    }
+    ,
+    {
+      "id": "House",
+      "parents": [],
+      "region": "Global",
+      "decade": "1970s–"
+    },
+    {
+      "id": "Hip hop",
+      "parents": [],
+      "region": "US",
+      "decade": "1970s–"
+    },
+    {
+      "id": "Trap",
+      "parents": ["Hip hop"],
+      "region": "US",
+      "decade": "2000s–"
+    }
+  ]
+}
+

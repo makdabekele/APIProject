@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Cultural DNA Map</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="style.css" />
+
+  <!-- D3 for graph rendering -->
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+</head>
+<body>
+  <main class="app">
+    <header class="app-header">
+      <h1>Cultural DNA Map</h1>
+      <p>Explore how songs sit inside a web of genres, influences, and history.</p>
+    </header>
+
+    <section class="layout">
+      <!-- LEFT: song / artist picker -->
+      <aside class="panel panel-left">
+        <h2>Tracks</h2>
+        <input
+          id="searchInput"
+          type="text"
+          placeholder="Search (or pick one below)…"
+        />
+        <button id="searchButton">Search</button>
+
+        <div id="featuredTracks" class="featured-list">
+          <!-- JS will inject curated tracks here -->
+        </div>
+      </aside>
+
+      <!-- CENTER: DNA map -->
+      <section class="map-container">
+        <div id="mapTitle" class="map-title">
+          Select a track to see its cultural DNA.
+        </div>
+        <div id="graph"></div>
+      </section>
+
+      <!-- RIGHT: info panel -->
+      <aside class="panel panel-right">
+        <h2 id="infoTitle">Info</h2>
+        <div id="infoContent">
+          <p>Pick a track or click a node in the map to learn more.</p>
+        </div>
+      </aside>
+    </section>
+  </main>
+
+  <!-- App logic -->
+  <script src="app.js"></script>
+</body>
+</html>
