@@ -8,6 +8,8 @@
 // Global state-ish
 let svg = null;
 let simulation = null;
+let currentTrack = null; // Store current track for back-to-track functionality
+let currentTrackHTML = null; // Store original track info HTML
 
 const width = 800;
 const height = 500;
@@ -33,7 +35,61 @@ const LASTFM_BANNED_TAGS = new Set([
   "favourite",
   "love",
   "under 2000 listeners",
-  "under 100 listeners"
+  "under 100 listeners",
+  // Location/origin tags
+  "american",
+  "british",
+  "uk",
+  "usa",
+  "united states",
+  "chicago",
+  "new york",
+  "london",
+  "los angeles",
+  "oakland",
+  "brooklyn",
+  "atlanta",
+  "austin",
+  "nashville",
+  "memphis",
+  "seattle",
+  "portland",
+  "toronto",
+  "vancouver",
+  "sydney",
+  "melbourne",
+  "berlin",
+  "paris",
+  "tokyo",
+  "moscow",
+  "moscow metal",
+  // Decade/era tags (not genres)
+  "70s",
+  "80s",
+  "90s",
+  "2000s",
+  "1970s",
+  "1980s",
+  "1990s",
+  "2000s",
+  "early 2000s",
+  // Other non-genre descriptors
+  "male",
+  "female",
+  "male vocals",
+  "female vocals",
+  "instrumental",
+  "remix",
+  "cover",
+  "live",
+  "acoustic",
+  "unplugged",
+  "ost",
+  "soundtrack",
+  "anime",
+  "video game",
+  "game",
+  "film"
 ]);
 
 function normalizeTagName(name) {
@@ -137,9 +193,12 @@ const wikiCache = new Map();
 async function fetchGenreSummaryFromWikipedia(genreName) {
   if (!genreName) return null;
   if (wikiCache.has(genreName)) return wikiCache.get(genreName);
+  // Check if there's an alias for better Wikipedia resolution
+  const normalized = (genreName || "").toLowerCase().trim();
+  const aliasedName = WIKI_ALIAS[normalized] || genreName;
   // Prefer searching for the music-specific article (e.g., "rock music")
-  const searchTitle = `${genreName} music`;
-  const tryTitles = [searchTitle, genreName];
+  const searchTitle = `${aliasedName} music`;
+  const tryTitles = [searchTitle, aliasedName];
 
   for (const t of tryTitles) {
     const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(t)}`;
@@ -164,43 +223,150 @@ async function fetchGenreSummaryFromWikipedia(genreName) {
 
 // Map some common genre terms to Wikipedia category titles for subgenre listing
 const GENRE_TO_WIKI_CATEGORY = {
-  "hip hop": "Hip hop genres",
-  "hip-hop": "Hip hop genres",
-  "rock": "Rock music genres",
-  "house": "House music genres",
+  // Hip-Hop / Rap
+  "hip hop": "Hip hop music genres",
+  "hip-hop": "Hip hop music genres",
+  "rap": "Hip hop music genres",
+  "trap": "Hip hop music genres",
+  "boom bap": "Hip hop music genres",
+  "drill": "Hip hop music genres",
+  "alternative hip hop": "Hip hop music genres",
+  
+  // Electronic / Dance
   "electronic": "Electronic music genres",
-  "reggae": "Reggae genres",
+  "house": "House music genres",
+  "techno": "Techno",
+  "trance": "Trance music",
+  "drum and bass": "Drum and bass",
+  "dubstep": "Dubstep",
+  "uk garage": "Garage music",
+  "ambient": "Ambient music",
+  
+  // Rock
+  "rock": "Rock music genres",
+  "alternative rock": "Alternative rock",
+  "indie rock": "Indie rock",
+  "punk rock": "Punk rock",
+  "post-punk": "Post-punk",
+  "metal": "Heavy metal music",
+  "hardcore punk": "Hardcore punk",
+  
+  // Pop
+  "pop": "Pop music genres",
+  "synthpop": "Synthpop",
+  "electropop": "Electropop",
+  "indie pop": "Indie pop",
+  
+  // R&B / Soul
+  "r&b": "Rhythm and blues music genres",
+  "soul": "Soul music genres",
+  "neo-soul": "Soul music genres",
+  "funk": "Funk music",
+  
+  // Jazz / Blues
   "jazz": "Jazz genres",
   "blues": "Blues genres",
-  "pop": "Pop music genres"
+  "bebop": "Bebop",
+  
+  // Global / Regional
+  "afrobeats": "Afrobeats",
+  "reggae": "Reggae music",
+  "dancehall": "Dancehall",
+  "latin": "Latin music",
+  "reggaeton": "Reggaeton",
+  "salsa": "Salsa music",
+  "bossa nova": "Bossa nova",
+  
+  // Experimental / Art
+  "experimental": "Experimental music",
+  "avant-garde": "Avant-garde music",
+  "noise": "Noise music",
+  "industrial": "Industrial music",
+  
+  // Folk / Acoustic
+  "folk": "Folk music genres",
+  "singer-songwriter": "Singer-songwriters",
+  "americana": "Americana music",
+  
+  // Classical / Score
+  "classical": "Classical music genres",
+  "contemporary classical": "Contemporary classical music",
+  "film score": "Film score",
+  
+  // Internet / Culture-Driven
+  "hyperpop": "Hyperpop",
+  "bedroom pop": "Bedroom pop",
+  "vaporwave": "Vaporwave",
+  
+  // Other Anchors
+  "grunge": "Grunge",
+  "shoegaze": "Shoegaze",
+  "emo": "Emo music",
+  "gothic rock": "Gothic rock",
+  "post-rock": "Post-rock",
+  "chillout": "Chillhop",
+  "lo-fi": "Lo-fi music",
+  "world music": "World music"
+};
+
+// Map common genre variations to better Wikipedia pages
+const WIKI_ALIAS = {
+  "rap": "hip hop",
+  "hip-hop": "hip hop",
+  "r&b": "rhythm and blues",
+  "edm": "electronic dance music"
 };
 
 async function fetchSubgenresFromWikipedia(genreName, limit = 20) {
   if (!genreName) return [];
   const key = String(genreName).toLowerCase().trim();
-  const categoryTitle = GENRE_TO_WIKI_CATEGORY[key] || `${genreName} music genres`;
-
-  const params = new URLSearchParams({
-    action: "query",
-    list: "categorymembers",
-    cmtitle: `Category:${categoryTitle}`,
-    cmlimit: String(limit),
-    format: "json",
-    origin: "*"
-  });
-
-  const url = `https://en.wikipedia.org/w/api.php?${params.toString()}`;
-  try {
-    const res = await fetch(url);
-    if (!res.ok) return [];
-    const json = await res.json();
-    const members = json?.query?.categorymembers || [];
-    const titles = members.map((m) => m.title).filter(Boolean);
-    return titles;
-  } catch (e) {
-    console.error("Failed to fetch category members from Wikipedia:", e);
-    return [];
+  const primaryTitle = GENRE_TO_WIKI_CATEGORY[key];
+  
+  // Generate variations of the genre name (dash, no-dash, hyphenated, etc.)
+  const variations = [primaryTitle];
+  if (genreName.includes(" ")) {
+    variations.push(genreName.replace(/ /g, "-")); // Add dashes
+    variations.push(genreName.replace(/ /g, "")); // Remove spaces
   }
+  if (genreName.includes("-")) {
+    variations.push(genreName.replace(/-/g, " ")); // Remove dashes
+    variations.push(genreName.replace(/-/g, "")); // Remove dashes entirely
+  }
+  variations.push(`${genreName} music genres`);
+  variations.push(`${genreName} music`);
+  variations.push(genreName);
+  variations.push(`${genreName} genres`);
+
+  for (const categoryTitle of variations.filter(Boolean)) {
+    const params = new URLSearchParams({
+      action: "query",
+      list: "categorymembers",
+      cmtitle: `Category:${categoryTitle}`,
+      cmlimit: String(limit),
+      format: "json",
+      origin: "*"
+    });
+
+    const url = `https://en.wikipedia.org/w/api.php?${params.toString()}`;
+    console.debug("Trying Wikipedia category:", `Category:${categoryTitle}`);
+    try {
+      const res = await fetch(url);
+      if (!res.ok) continue;
+      const json = await res.json();
+      const members = json?.query?.categorymembers || [];
+      const titles = members.map((m) => m.title).filter(Boolean);
+      if (titles.length > 0) {
+        console.debug("✓ Found", titles.length, "members in", categoryTitle);
+        return titles;
+      }
+    } catch (e) {
+      console.debug("Failed to fetch", categoryTitle, e);
+      continue;
+    }
+  }
+  
+  console.warn("No Wikipedia categories found for:", genreName);
+  return [];
 }
 
 let hoverInfoDiv = null;
@@ -247,7 +413,7 @@ function renderGenreChips(canonicalGenres) {
   const container = document.createElement("div");
   container.className = "info-section";
   container.innerHTML = `
-    <div class="info-label">Genre DNA</div>
+    <div class="info-label">Last.fm tags</div>
     <div class="info-main" id="genreChipRow"></div>
   `;
 
@@ -269,10 +435,49 @@ function renderGenreChips(canonicalGenres) {
   infoContent.appendChild(container);
 }
 
+async function renderWikiInfoForLabel(label) {
+  if (!label) return;
+  const infoTitle = document.getElementById('infoTitle');
+  const infoContent = document.getElementById('infoContent');
+  infoTitle.textContent = label;
+  infoContent.innerHTML = `
+    <div class="info-section">
+      <div class="info-label">Overview</div>
+      <div class="info-main">Loading summary…</div>
+    </div>
+  `;
+  try {
+    const wiki = await fetchGenreSummaryFromWikipedia(label);
+    if (wiki) {
+      infoContent.innerHTML = `
+        ${currentTrack ? `<button id="backToTrackBtn" class="back-btn" style="margin-bottom: 1rem; padding: 0.5rem 1rem; background: #6c5ce7; color: #fff; border: none; border-radius: 4px; cursor: pointer;">← Back to track</button>` : ''}
+        <div class="info-section">
+          <div class="info-label">${wiki.title}</div>
+          <div class="info-main">${wiki.extract}</div>
+        </div>
+        ${wiki.url ? `<div class="info-section"><a href="${wiki.url}" target="_blank">Read more on Wikipedia</a></div>` : ''}
+      `;
+      // Wire up back button if it exists
+      const backBtn = document.getElementById('backToTrackBtn');
+      if (backBtn) {
+        backBtn.addEventListener('click', () => {
+          if (currentTrackHTML) {
+            infoContent.innerHTML = currentTrackHTML;
+          }
+        });
+      }
+    } else {
+      infoContent.innerHTML = `<div class="info-section"><div class="info-main">No Wikipedia summary found.</div></div>`;
+    }
+  } catch (e) {
+    infoContent.innerHTML = `<div class="info-section"><div class="info-main">Could not fetch summary.</div></div>`;
+  }
+}
+
 async function onGenreChipClick(genreName) {
   if (!genreName) return;
   try {
-    buildGenreFocusGraph(genreName);
+    buildGenreFocusGraph(genreName, null, { preserveTagColor: true });
   } catch (e) {
     console.debug("buildGenreFocusGraph failed", e);
   }
@@ -348,9 +553,19 @@ function renderGraph(nodes, links, titleText) {
       d3
         .forceLink(links)
         .id((d) => d.id)
-        .distance(120)
+        .distance((d) => {
+          // Increase link distance for track->tag connections to create a larger orbit
+          try {
+            const sType = d.source && d.source.type;
+            const tType = d.target && d.target.type;
+            if (sType === 'track' || tType === 'track') return 220;
+            return 160;
+          } catch (e) {
+            return 180;
+          }
+        })
     )
-    .force("charge", d3.forceManyBody().strength(-280))
+    .force("charge", d3.forceManyBody().strength(-600))
     .force("center", d3.forceCenter(width / 2, height / 2));
 
   const link = svg
@@ -371,11 +586,30 @@ function renderGraph(nodes, links, titleText) {
     .data(nodes)
     .enter()
     .append("circle")
-  .attr("data-id", (d) => d.id)
-  .attr("data-placeholder", (d) => (d.isPlaceholder ? "true" : "false"))
-  .classed("genre-node", true)
-    .attr("r", (d) => (d.isCentral ? 14 : 9))
-    .attr("fill", (d) => (d.isCentral ? "#b36cff" : "#3d365b"))
+    .attr("data-id", (d) => d.id)
+    .attr("data-placeholder", (d) => (d.isPlaceholder ? "true" : "false"))
+    .classed("genre-node", true)
+    .attr("r", (d) => {
+      if (d.isCentral) return 20; // Central node larger
+      if (d.isContext) return 14; // Context/source track (slightly smaller)
+      if (d.type === 'tag') return 14; // Tag nodes larger for visibility
+      return 12; // Subgenres
+    })
+    .attr("fill", (d) => {
+      // Central nodes
+      if (d.isCentral && d.type === 'genre') {
+        // Preserve tag color when requested (keeps coral color for continuity)
+        if (d.preserveTagColor) return "#ff9a76";
+        return "#ffd93d"; // Bright gold for central genre
+      }
+      if (d.isCentral && d.type === 'track') return "#4dd0e1"; // Bright cyan for central track
+      // Context/source nodes
+      if (d.isContext) return "#80deea"; // Muted cyan for context track
+      // Tag nodes
+      if (d.type === 'tag') return "#ff9a76"; // Coral/orange for tags
+      // Subgenres
+      return "#ba68c8"; // Muted purple/lavender for subgenres
+    })
     .style("cursor", "pointer")
     .on("click", (_, d) => onNodeClick(d))
     .call(
@@ -404,7 +638,7 @@ function renderGraph(nodes, links, titleText) {
     .enter()
     .append("text")
     .text((d) => d.label)
-    .attr("font-size", 10)
+    .attr("font-size", 12)
     .attr("fill", "#ddd")
     .attr("text-anchor", "middle")
     .attr("dy", 20);
@@ -465,10 +699,10 @@ async function onNodeClick(node) {
     return;
   }
 
-  // If this is a tag node, map it to canonical and open the genre-focused graph
+  // If this is a tag node, build a genre-focused graph showing subgenres
   if (node.type === 'tag') {
     const tagName = node.label;
-    buildGenreFocusGraph(tagName);
+    buildGenreFocusGraph(tagName, currentTrack, { preserveTagColor: true });
     return;
   }
 
@@ -502,21 +736,7 @@ async function onNodeClick(node) {
 // -------------------------------------------------------
 
 function initFeaturedTracks() {
-  const featured = [
-    {
-      id: "EXAMPLE_SKEPTA_SHUTDOWN",
-      title: "Shutdown",
-      artist: "Skepta",
-      // Later: real Spotify ID + cover pulled via API
-      cover: "https://via.placeholder.com/64x64.png?text=Art"
-    },
-    {
-      id: "EXAMPLE_JHUS_SPIRIT",
-      title: "Spirit",
-      artist: "J Hus",
-      cover: "https://via.placeholder.com/64x64.png?text=Art"
-    }
-  ];
+  const featured = [];
 
   const container = document.getElementById("featuredTracks");
   container.innerHTML = "";
@@ -573,21 +793,119 @@ function onFeaturedTrackClick(track) {
 function wireSearch() {
   const input = document.getElementById("searchInput");
   const button = document.getElementById("searchButton");
+  let debounceTimer;
+  
+  // Create suggestions dropdown
+  const suggestionsDiv = document.createElement("div");
+  suggestionsDiv.id = "searchSuggestions";
+  suggestionsDiv.className = "search-suggestions";
+  suggestionsDiv.style.cssText = `
+    position: fixed;
+    background: #1a1a2e;
+    border: 1px solid #444;
+    border-radius: 8px;
+    max-height: 300px;
+    overflow-y: auto;
+    display: none;
+    z-index: 1000;
+    min-width: 300px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  `;
+  document.body.appendChild(suggestionsDiv);
+  
+  // Function to position suggestions below input
+  function positionSuggestions() {
+    const rect = input.getBoundingClientRect();
+    suggestionsDiv.style.top = (rect.bottom + 5) + "px";
+    suggestionsDiv.style.left = rect.left + "px";
+    suggestionsDiv.style.width = rect.width + "px";
+  }
+  
+  // Search on input (with debounce)
+  input.addEventListener("input", async (e) => {
+    clearTimeout(debounceTimer);
+    const q = input.value.trim();
+    
+    if (!q || q.length < 2) {
+      suggestionsDiv.style.display = "none";
+      return;
+    }
+    
+    debounceTimer = setTimeout(async () => {
+      const tracks = await searchTracks(q);
+      displaySuggestions(tracks, suggestionsDiv, input);
+      positionSuggestions();
+    }, 300);
+  });
+  
+  // Search on button click
   button.addEventListener("click", async () => {
     const q = input.value.trim();
     if (!q) return;
     const tracks = await searchTracks(q);
     renderSearchResults(tracks);
+    suggestionsDiv.style.display = "none";
   });
-  // Enter key triggers search
+  
+  // Enter key triggers full search
   input.addEventListener("keydown", async (e) => {
     if (e.key === "Enter") {
       const q = input.value.trim();
       if (!q) return;
       const tracks = await searchTracks(q);
       renderSearchResults(tracks);
+      suggestionsDiv.style.display = "none";
     }
   });
+  
+  // Hide suggestions when clicking outside
+  document.addEventListener("click", (e) => {
+    if (e.target !== input && e.target !== button && !suggestionsDiv.contains(e.target)) {
+      suggestionsDiv.style.display = "none";
+    }
+  });
+}
+
+function displaySuggestions(tracks, suggestionsDiv, searchInput) {
+  suggestionsDiv.innerHTML = "";
+  
+  if (!tracks || tracks.length === 0) {
+    suggestionsDiv.style.display = "none";
+    return;
+  }
+  
+  // Show top 8 suggestions
+  tracks.slice(0, 8).forEach((track) => {
+    const suggestion = document.createElement("div");
+    suggestion.className = "suggestion-item";
+    suggestion.style.cssText = `
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid #333;
+      cursor: pointer;
+      transition: background 0.2s;
+    `;
+    suggestion.innerHTML = `
+      <div style="font-weight: 500; color: #ddd;">${track.trackName}</div>
+      <div style="font-size: 0.85rem; color: #999;">${track.artistName}</div>
+    `;
+    
+    suggestion.addEventListener("mouseenter", () => {
+      suggestion.style.background = "#2a2a3e";
+    });
+    suggestion.addEventListener("mouseleave", () => {
+      suggestion.style.background = "transparent";
+    });
+    
+    suggestion.addEventListener("click", () => {
+      searchInput.value = `${track.trackName} — ${track.artistName}`;
+      suggestionsDiv.style.display = "none";
+      onITunesTrackSelected(track);
+    });
+    
+    suggestionsDiv.appendChild(suggestion);
+  });
+  
+  suggestionsDiv.style.display = "block";
 }
 
 
@@ -647,6 +965,9 @@ function renderSearchResults(tracks) {
 
 
 async function onITunesTrackSelected(track) {
+  // Store track for back-to-track functionality
+  currentTrack = track;
+  
   // Update map title
   document.getElementById("mapTitle").textContent =
     `Cultural DNA for: ${track.trackName} — ${track.artistName}`;
@@ -697,6 +1018,9 @@ async function onITunesTrackSelected(track) {
       </div>
     `}
   `;
+  
+  // Store the original track HTML for back-to-track functionality
+  currentTrackHTML = infoContent.innerHTML;
 
   // Fetch Last.fm tags for artist + track and use them directly as chips + graph nodes
   try {
@@ -706,35 +1030,24 @@ async function onITunesTrackSelected(track) {
     ]);
 
     const combinedTags = Array.from(new Set([...(artistTags || []), ...(trackTags || [])]));
-    console.log("Last.fm tags:", combinedTags);
-
-    // Ensure a Last.fm status block exists and update it
-    let s = document.getElementById("lastfmStatus");
-    if (!s) {
-      s = document.createElement("div");
-      s.className = "info-section";
-      s.id = "lastfmStatus";
-      const infoContentEl = document.getElementById("infoContent");
-      if (infoContentEl) infoContentEl.appendChild(s);
-    }
-
-    if (combinedTags.length) {
-      s.innerHTML = `<div class="info-label">Last.fm tags</div><div class="info-main">${combinedTags.slice(0,8).join(", ")}</div>`;
-    } else {
-      s.innerHTML = `<div class="info-label">Last.fm tags</div><div class="info-main">No tags found.</div>`;
-    }
-
+    
+    // Filter out the track's artist name to prevent artist appearing as a tag
+    const artistName = (artist || "").toLowerCase().trim();
+    const filteredTags = combinedTags.filter(tag => {
+      const normalized = normalizeTagName(tag);
+      return normalized !== artistName && !artistName.includes(normalized) && !normalized.includes(artistName);
+    });
+    
+    console.log("Last.fm tags (filtered):", filteredTags);
     // Render the raw Last.fm tags as chips (deduped)
-    if (combinedTags.length) {
-      renderGenreChips(combinedTags);
+    if (filteredTags.length) {
+      renderGenreChips(filteredTags);
     }
 
     // Build a track-centered graph: central node for the track connected to its Last.fm tags
-    buildTrackGenreGraph(track, combinedTags || []);
+    buildTrackGenreGraph(track, filteredTags || []);
   } catch (err) {
     console.error("Error fetching Last.fm tags", err);
-    const s = document.getElementById("lastfmStatus");
-    if (s) s.innerHTML = `<div class="info-label">Last.fm</div><div class="info-main">Error fetching tags</div>`;
     // still build a minimal graph with no tags
     buildTrackGenreGraph(track, []);
   }
@@ -761,10 +1074,20 @@ function buildTrackGenreGraph(track, tags) {
 
   const centralId = `TRACK:${track.trackId || track.trackName + ' - ' + (track.artistName||'')}`;
   const centralLabel = `${track.trackName} — ${track.artistName}`;
-  add({ id: centralId, label: centralLabel, type: 'track', isCentral: true, trackData: track });
+  // Pin track node to center for better layout
+  const trackNode = { 
+    id: centralId, 
+    label: centralLabel, 
+    type: 'track', 
+    isCentral: true, 
+    trackData: track,
+    fx: width / 2,
+    fy: height / 2
+  };
+  add(trackNode);
 
   // Add tag nodes
-  const uniq = Array.from(new Set((tags || []).slice(0, 20)));
+  const uniq = Array.from(new Set((tags || []).slice(0, 12))); // Limit to 12 tags for clarity
   uniq.forEach((t) => {
     const id = `TAG:${t}`;
     add({ id, label: t, type: 'tag' });
@@ -781,7 +1104,7 @@ function buildTrackGenreGraph(track, tags) {
 // -------------------------------------------------------
 // Build a genre-focused graph: genre node + parents + children
 // -------------------------------------------------------
-async function buildGenreFocusGraph(genreName) {
+async function buildGenreFocusGraph(genreName, sourceTrack = null, options = {}) {
   if (!genreName) return;
   const name = String(genreName).trim();
 
@@ -797,9 +1120,29 @@ async function buildGenreFocusGraph(genreName) {
     return map.get(n.id);
   }
 
+  // If we came from a track, optionally add it as context
+  // (visual reference to where this genre came from)
+  if (sourceTrack) {
+    const trackId = `TRACK:${sourceTrack.trackId || sourceTrack.trackName + ' - ' + (sourceTrack.artistName||'')}`;
+    const trackLabel = `${sourceTrack.trackName} — ${sourceTrack.artistName}`;
+    add({ 
+      id: trackId, 
+      label: trackLabel, 
+      type: 'track', 
+      isContext: true,
+      trackData: sourceTrack 
+    });
+    // Link track to the genre
+    const genreId = `GENRE:${name}`;
+    links.push({ source: trackId, target: genreId });
+  }
+
   // central genre node
   const centralId = `GENRE:${name}`;
-  add({ id: centralId, label: name, type: 'genre', isCentral: true });
+  const centralNode = { id: centralId, label: name, type: 'genre', isCentral: true };
+  // preserveTagColor indicates we should keep the tag color (coral) when arriving from a tag
+  if (options && options.preserveTagColor) centralNode.preserveTagColor = true;
+  add(centralNode);
 
   // Fetch subgenres from Wikipedia categories
   let subgenres = [];
@@ -815,19 +1158,81 @@ async function buildGenreFocusGraph(genreName) {
     links.push({ source: centralId, target: sid });
   });
 
-  renderGraph(nodes, links, `Genre: ${name}`);
+  const titleText = sourceTrack 
+    ? `${sourceTrack.trackName} → ${name}` 
+    : `Genre: ${name}`;
 
-  // Update right-hand info panel with Wikipedia summary
+  renderGraph(nodes, links, titleText);
+
+  // Update right-hand info panel with Wikipedia summary + back button
   const infoTitle = document.getElementById('infoTitle');
   const infoContent = document.getElementById('infoContent');
   infoTitle.textContent = name;
   infoContent.innerHTML = `<div class="info-section"><div class="info-label">Overview</div><div class="info-main">Loading summary…</div></div>`;
   try {
     const wiki = await fetchGenreSummaryFromWikipedia(name);
-    infoContent.innerHTML = `
+    let wikiSection = `
+      ${currentTrack ? `<button id="backToTrackBtn" class="back-btn" style="margin-bottom: 1rem; padding: 0.5rem 1rem; background: #6c5ce7; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9rem;">← Back to track</button>` : ''}
       <div class="info-section"><div class="info-label">${wiki?.title || name}</div><div class="info-main">${wiki?.extract || 'No summary found.'}</div></div>
-      ${wiki?.url ? `<div class="info-section"><a href="${wiki.url}" target="_blank">Read more on Wikipedia</a></div>` : ''}
+      ${wiki?.url ? `<div class="info-section"><a href="${wiki.url}" target="_blank" style="color: #64b5f6; text-decoration: underline; font-weight: 500;">Read more on Wikipedia</a></div>` : ''}
     `;
+    
+    // Only show "On Missing Categories" if Wikipedia knows about it but has no subgenres
+    // This indicates it's a real genre with no Wikipedia category structure
+    // Check if the Wikipedia page is actually music-related (contains "music" or "genre" keywords)
+    const isMusicRelated = wiki && (
+      (wiki.title && (wiki.title.toLowerCase().includes('music') || wiki.title.toLowerCase().includes('genre'))) ||
+      (wiki.extract && (wiki.extract.toLowerCase().includes('music') || wiki.extract.toLowerCase().includes('genre')))
+    );
+    
+    if (subgenres.length === 0 && isMusicRelated) {
+      wikiSection += `
+        <div class="info-section" style="margin-top: 2rem; padding: 1rem; border-left: 4px solid #ffd93d; background: rgba(255, 217, 61, 0.08); border-radius: 4px;">
+          <div class="info-label" style="color: #ffd93d; font-weight: 600;">On Missing Categories</div>
+          <div class="info-main" style="color: #e0e0e0; line-height: 1.6;">
+            The absence of "<strong>${name}</strong>" in these classification systems reveals something crucial: 
+            music creation is outpacing our ability to categorize it. When genres go unnamed or misclassified, 
+            we risk erasing local scenes, severing historical lineage, and flattening the cultural specificity 
+            that makes music meaningful. Genre matters—not as a box, but as a story.
+          </div>
+        </div>
+      `;
+    }
+    
+    infoContent.innerHTML = wikiSection;
+    // Wire up back button
+    const backBtn = document.getElementById('backToTrackBtn');
+    if (backBtn && currentTrackHTML) {
+      backBtn.addEventListener('click', () => {
+        infoContent.innerHTML = currentTrackHTML;
+        // Rebuild the original track graph
+        if (currentTrack) {
+          (async () => {
+            try {
+              const artist = currentTrack.artistName || 'Unknown artist';
+              const [artistTags, trackTags] = await Promise.all([
+                fetchArtistTopTags(artist, 12),
+                fetchTrackTopTags(artist, currentTrack.trackName || '', 12)
+              ]);
+              const combined = Array.from(new Set([...(artistTags || []), ...(trackTags || [])]));
+
+              // Filter out artist name and banned tags (same logic as initial load)
+              const artistName = (artist || "").toLowerCase().trim();
+              const filtered = combined.filter(tag => {
+                const n = normalizeTagName(tag);
+                return n && n !== artistName && !artistName.includes(n) && !n.includes(artistName) && !LASTFM_BANNED_TAGS.has(n);
+              });
+
+              // Re-render genre chips and rebuild graph with filtered tags
+              if (filtered.length) renderGenreChips(filtered);
+              buildTrackGenreGraph(currentTrack, filtered);
+            } catch (e) {
+              buildTrackGenreGraph(currentTrack, []);
+            }
+          })();
+        }
+      });
+    }
   } catch (e) {
     infoContent.innerHTML = `<div class="info-section"><div class="info-label">Summary</div><div class="info-main">Could not fetch summary.</div></div>`;
   }
