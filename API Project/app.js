@@ -6,7 +6,6 @@
 // 3) Later: connect tracks (Spotify) to these genres and recenter map per track.
 
 // Global state-ish
-let genreData = null; // loaded from JSON
 let svg = null;
 let simulation = null;
 
@@ -17,7 +16,6 @@ const height = 500;
 window.addEventListener("DOMContentLoaded", () => {
   initFeaturedTracks(); // temporary starter list
   initGraphSvg();
-  loadGenreData();
   wireSearch();
 });
 
@@ -127,99 +125,8 @@ async function fetchTrackTopTags(artistName, trackName, limit = 15) {
   }
 }
 
-const TAG_TO_CANONICAL = {
-  "trap": ["Trap"],
-  "trill": ["Trap"],
-  "plug": ["Pluggnb"],
-  "pluggnb": ["Pluggnb"],
-  "plugg": ["Pluggnb"],
-  "rage": ["Rage"],
-  "hyperpop": ["Rage"],
-  "emo rap": ["Hip hop", "Alternative hip hop"],
-  "cloud rap": ["Hip hop", "Pluggnb"],
-  "drill": ["Drill"],
-  "uk drill": ["UK drill"],
-  "grime": ["Grime"],
-  "road rap": ["UK rap"],
-  "uk rap": ["UK rap"],
-  "british rap": ["UK rap"],
-  "uk hip hop": ["UK rap"],
-  "underground": ["UK underground"],
-  "uk underground": ["UK underground"],
-  "experimental hip-hop": ["UK underground", "Alternative hip hop"],
-  "experimental rap": ["UK underground", "Alternative hip hop"],
-  "hip-hop": ["Hip hop"],
-  "hip hop": ["Hip hop"],
-  "hip-hop/rap": ["Hip hop"],
-  "rap": ["Hip hop"],
-  "alternative hip hop": ["Alternative hip hop"],
-  "r&b": ["R&B"],
-  "rnb": ["R&B"],
-  "afrobeats": ["Afrobeats"],
-  "afrobeat": ["Afrobeats"],
-  "dancehall": ["Dancehall"],
-  "reggae": ["Reggae"],
-  "house": ["House"],
-  "garage": ["UK garage"],
-  "uk garage": ["UK garage"],
-  "jungle": ["Jungle"],
-  "drum and bass": ["Drum & bass"],
-  "dnb": ["Drum & bass"],
-  "bassline": ["UK garage"],
-  "club": ["House"],
-  "bedroom pop": ["Bedroom pop"],
-  "alt pop": ["Bedroom pop"],
-  "indie": ["Indie"],
-  "indie pop": ["Indie"],
-  "pop": ["Pop"]
-};
-
-function mapTagsToCanonical(tags) {
-  const result = new Set();
-  tags.forEach((tag) => {
-    const exact = TAG_TO_CANONICAL[tag];
-    if (exact) {
-      exact.forEach((g) => result.add(g));
-    } else {
-      Object.keys(TAG_TO_CANONICAL).forEach((key) => {
-        if (tag.includes(key)) {
-          TAG_TO_CANONICAL[key].forEach((g) => result.add(g));
-        }
-      });
-    }
-  });
-  return Array.from(result);
-}
-
-const ITUNES_TO_CANONICAL_GENRES = {
-  "Hip-Hop/Rap": ["Hip hop"],
-  "R&B/Soul": ["R&B"],
-  "Dance": ["House"],
-  "Electronic": ["House"],
-  "Reggae": ["Reggae"],
-  "Afrobeats": ["Afrobeats"],
-  "Pop": ["Pop"]
-};
-
-function getCanonicalFromITunes(track) {
-  const primary = track.primaryGenreName;
-  if (!primary) return [];
-  const mapped = ITUNES_TO_CANONICAL_GENRES[primary];
-  return mapped || [];
-}
-
-function mergeCanonicalSources(sources) {
-  const set = new Set();
-  (sources || []).forEach((s) => {
-    if (!s) return;
-    if (Array.isArray(s)) {
-      s.forEach((x) => x && set.add(x));
-    } else if (typeof s === "string") {
-      set.add(s);
-    }
-  });
-  return Array.from(set);
-}
+// NOTE: We no longer use curated canonical mappings from a local JSON.
+// Tags from Last.fm (and iTunes primary genres) are presented directly to the user.
 
 // -------------------------------------------------------
 // Wikipedia helpers + genre UI (chips, hover, click)
@@ -230,27 +137,69 @@ const wikiCache = new Map();
 async function fetchGenreSummaryFromWikipedia(genreName) {
   if (!genreName) return null;
   if (wikiCache.has(genreName)) return wikiCache.get(genreName);
+  // Prefer searching for the music-specific article (e.g., "rock music")
+  const searchTitle = `${genreName} music`;
+  const tryTitles = [searchTitle, genreName];
 
-  const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(
-    genreName
-  )}`;
+  for (const t of tryTitles) {
+    const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(t)}`;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) continue;
+      const json = await res.json();
+      const payload = {
+        title: json.title,
+        extract: json.extract,
+        url: json.content_urls?.desktop?.page || json.content_urls?.mobile?.page
+      };
+      wikiCache.set(genreName, payload);
+      return payload;
+    } catch (e) {
+      console.debug("Wikipedia summary fetch failed for", t, e);
+    }
+  }
 
+  return null;
+}
+
+// Map some common genre terms to Wikipedia category titles for subgenre listing
+const GENRE_TO_WIKI_CATEGORY = {
+  "hip hop": "Hip hop genres",
+  "hip-hop": "Hip hop genres",
+  "rock": "Rock music genres",
+  "house": "House music genres",
+  "electronic": "Electronic music genres",
+  "reggae": "Reggae genres",
+  "jazz": "Jazz genres",
+  "blues": "Blues genres",
+  "pop": "Pop music genres"
+};
+
+async function fetchSubgenresFromWikipedia(genreName, limit = 20) {
+  if (!genreName) return [];
+  const key = String(genreName).toLowerCase().trim();
+  const categoryTitle = GENRE_TO_WIKI_CATEGORY[key] || `${genreName} music genres`;
+
+  const params = new URLSearchParams({
+    action: "query",
+    list: "categorymembers",
+    cmtitle: `Category:${categoryTitle}`,
+    cmlimit: String(limit),
+    format: "json",
+    origin: "*"
+  });
+
+  const url = `https://en.wikipedia.org/w/api.php?${params.toString()}`;
   try {
     const res = await fetch(url);
-    if (!res.ok) return null;
+    if (!res.ok) return [];
     const json = await res.json();
-
-    const payload = {
-      title: json.title,
-      extract: json.extract,
-      url: json.content_urls?.desktop?.page || json.content_urls?.mobile?.page
-    };
-
-    wikiCache.set(genreName, payload);
-    return payload;
+    const members = json?.query?.categorymembers || [];
+    const titles = members.map((m) => m.title).filter(Boolean);
+    return titles;
   } catch (e) {
-    console.error("Wikipedia summary fetch failed:", e);
-    return null;
+    console.error("Failed to fetch category members from Wikipedia:", e);
+    return [];
   }
 }
 
@@ -320,110 +269,36 @@ function renderGenreChips(canonicalGenres) {
   infoContent.appendChild(container);
 }
 
-function findGenreNode(id) {
-  if (!genreData || !genreData.genreGraph) return null;
-  return genreData.genreGraph.find((g) => g.id.toLowerCase() === (id || "").toLowerCase());
-}
-
 async function onGenreChipClick(genreName) {
   if (!genreName) return;
-  // visually focus that genre in the graph
-  highlightCanonicalGenresOnGraph([genreName]);
-
-  // Rebuild graph focused on this genre (auto-creates placeholders if needed)
   try {
     buildGenreFocusGraph(genreName);
   } catch (e) {
-    console.debug('buildGenreFocusGraph failed', e);
+    console.debug("buildGenreFocusGraph failed", e);
   }
 
-  // look up its parents/children
-  const node = findGenreNode(genreName);
-
-  const parents = (genreData.genreGraph || [])
-    .filter((g) => node?.parents?.includes(g.id))
-    .map((g) => g.id);
-
-  const children = (genreData.genreGraph || [])
-    .filter((g) => g.parents?.includes(node?.id))
-    .map((g) => g.id);
-
-  const wiki = await fetchGenreSummaryFromWikipedia(genreName);
-
+  // Update right-hand info panel with summary
+  const infoTitle = document.getElementById("infoTitle");
   const infoContent = document.getElementById("infoContent");
-
-  const treeSection = document.createElement("div");
-  treeSection.className = "info-section";
-  treeSection.innerHTML = `
-    <div class="info-label">Genre family</div>
-    <div class="info-main">
-      <strong>${genreName}</strong><br/>
-      <em>${node?.region || "—"}, ${node?.decade || "—"}</em><br/><br/>
-
-      <strong>Influenced by:</strong>
-      ${parents.length ? parents.join(", ") : "—"}<br/>
-
-      <strong>Influences / descendants:</strong>
-      ${children.length ? children.join(", ") : "—"}<br/><br/>
-
-      ${wiki ? `
-        <strong>Context:</strong><br/>
-        ${wiki.extract}<br/>
-        ${wiki.url ? `<a href="${wiki.url}" target="_blank">Read more</a>` : ""}
-      ` : ""}
-    </div>
-  `;
-
-  infoContent.appendChild(treeSection);
-}
-
-// -------------------------------------------------------
-// Graph highlighting helpers
-
-// -------------------------------------------------------
-// Graph highlighting helpers
-async function loadGenreData() {
+  infoTitle.textContent = genreName;
+  infoContent.innerHTML = `<div class="info-section"><div class="info-label">Overview</div><div class="info-main">Loading summary…</div></div>`;
   try {
-    const res = await fetch("data/genres.json");
-    genreData = await res.json();
-    console.log("Loaded genre data:", genreData);
-    console.debug("genreGraph length:", genreData?.genreGraph?.length);
-
-    // Build nodes and links, auto-creating placeholder nodes for any missing parents
-    const nodes = [];
-    const nodesMap = new Map();
-
-    function addNode(obj) {
-      if (!nodesMap.has(obj.id)) {
-        nodesMap.set(obj.id, obj);
-        nodes.push(obj);
-      }
-      return nodesMap.get(obj.id);
-    }
-
-    // Seed nodes from the curated genreGraph
-    genreData.genreGraph.forEach((g) => {
-      addNode({ id: g.id, label: g.id, region: g.region, decade: g.decade });
-    });
-
-    // Build links; if a parent is missing from the curated list, create a placeholder node
-    const links = [];
-    genreData.genreGraph.forEach((g) => {
-      (g.parents || []).forEach((parentId) => {
-        if (!nodesMap.has(parentId)) {
-          console.warn(`Auto-creating missing parent node: ${parentId}`);
-          addNode({ id: parentId, label: parentId, region: "unknown", decade: "", isPlaceholder: true });
-        }
-        links.push({ source: parentId, target: g.id });
-      });
-    });
-
-    renderGraph(nodes, links, "Base genre lineage");
-
-  } catch (err) {
-    console.error("Failed to load genre data", err);
+    const wiki = await fetchGenreSummaryFromWikipedia(genreName);
+    infoContent.innerHTML = `
+      <div class="info-section"><div class="info-label">${wiki?.title || genreName}</div><div class="info-main">${wiki?.extract || 'No summary found.'}</div></div>
+      ${wiki?.url ? `<div class="info-section"><a href="${wiki.url}" target="_blank">Read more on Wikipedia</a></div>` : ''}
+    `;
+  } catch (e) {
+    infoContent.innerHTML = `<div class="info-section"><div class="info-label">Summary</div><div class="info-main">Could not fetch summary.</div></div>`;
   }
 }
+
+// -------------------------------------------------------
+// Graph highlighting helpers
+
+// -------------------------------------------------------
+// Graph highlighting helpers
+// Removed local `loadGenreData` — graph is now built dynamically from Last.fm + Wikipedia
 
 // -------------------------------------------------------
 // 2) Initialize SVG for D3
@@ -551,7 +426,7 @@ function renderGraph(nodes, links, titleText) {
 // 4) Node click -> update info panel
 // -------------------------------------------------------
 
-function onNodeClick(node) {
+async function onNodeClick(node) {
   // Different behavior depending on node type
   if (!node) return;
 
@@ -574,23 +449,26 @@ function onNodeClick(node) {
       ${previewUrl ? `<div class="info-section"><div class="info-label">Preview</div><audio controls src="${previewUrl}"></audio></div>` : `<div class="info-section"><div class="info-label">Preview</div><div class="info-main">No preview available.</div></div>`}
     `;
 
-    // Rebuild track graph centered on this track
-    buildTrackGenreGraph(t, []);
+    // Rebuild track graph centered on this track (attempt to fetch tags)
+    (async () => {
+      try {
+        const [artistTags, trackTags] = await Promise.all([
+          fetchArtistTopTags(artist, 12),
+          fetchTrackTopTags(artist, t.trackName || '', 12)
+        ]);
+        const combined = Array.from(new Set([...(artistTags || []), ...(trackTags || [])]));
+        buildTrackGenreGraph(t, combined);
+      } catch (e) {
+        buildTrackGenreGraph(t, []);
+      }
+    })();
     return;
   }
 
   // If this is a tag node, map it to canonical and open the genre-focused graph
   if (node.type === 'tag') {
     const tagName = node.label;
-    // Map tag to canonical if possible
-    let mapped = [];
-    try {
-      mapped = mapTagsToCanonical([tagName]);
-    } catch (e) {
-      mapped = [];
-    }
-    const target = mapped.length ? mapped[0] : tagName;
-    buildGenreFocusGraph(target);
+    buildGenreFocusGraph(tagName);
     return;
   }
 
@@ -604,25 +482,19 @@ function onNodeClick(node) {
   // Fallback: show basic info (legacy behavior)
   const infoTitle = document.getElementById("infoTitle");
   const infoContent = document.getElementById("infoContent");
-
-  infoTitle.textContent = node.label;
-  const match =
-    genreData &&
-    genreData.genreGraph.find((g) => g.id.toLowerCase() === node.label.toLowerCase());
-  const region = match?.region || "—";
-  const decade = match?.decade || "—";
-  infoContent.innerHTML = `
-    <div class="info-section">
-      <div class="info-label">Region / Era</div>
-      <div class="info-main">${region}, ${decade}</div>
-    </div>
-    <div class="info-section">
-      <div class="info-label">Description</div>
-      <div class="info-main">
-        This genre node is part of the broader lineage.
-      </div>
-    </div>
-  `;
+  // Show a Wikipedia summary for the node label as a fallback
+  const label = node.label || node.id || "";
+  infoTitle.textContent = label;
+  infoContent.innerHTML = `<div class="info-section"><div class="info-label">Overview</div><div class="info-main">Loading summary…</div></div>`;
+  try {
+    const wiki = await fetchGenreSummaryFromWikipedia(label);
+    infoContent.innerHTML = `
+      <div class="info-section"><div class="info-label">${wiki?.title || label}</div><div class="info-main">${wiki?.extract || 'No summary found.'}</div></div>
+      ${wiki?.url ? `<div class="info-section"><a href="${wiki.url}" target="_blank">Read more on Wikipedia</a></div>` : ''}
+    `;
+  } catch (e) {
+    infoContent.innerHTML = `<div class="info-section"><div class="info-label">Summary</div><div class="info-main">Could not fetch summary.</div></div>`;
+  }
 }
 
 // -------------------------------------------------------
@@ -826,32 +698,15 @@ async function onITunesTrackSelected(track) {
     `}
   `;
 
-  // FIRST: derive canonical genres from iTunes primary genre
-  const canonicalFromITunes = getCanonicalFromITunes(track);
-
-  // NEXT: fetch Last.fm tags (artist + track) and map them to canonical genres
+  // Fetch Last.fm tags for artist + track and use them directly as chips + graph nodes
   try {
     const [artistTags, trackTags] = await Promise.all([
-      fetchArtistTopTags(artist, 10),
-      fetchTrackTopTags(artist, track.trackName, 10)
+      fetchArtistTopTags(artist, 12),
+      fetchTrackTopTags(artist, track.trackName, 12)
     ]);
 
     const combinedTags = Array.from(new Set([...(artistTags || []), ...(trackTags || [])]));
     console.log("Last.fm tags:", combinedTags);
-
-    const canonicalFromTags = mapTagsToCanonical(combinedTags);
-    console.log("Canonical from Last.fm:", canonicalFromTags);
-
-    // Also check for simple genre overrides from your local JSON (genreMappings)
-    const overrides = [];
-    if (genreData && genreData.genreMappings) {
-      const key = (track.primaryGenreName || "").toLowerCase();
-      const mapped = genreData.genreMappings[key];
-      if (mapped) overrides.push(mapped);
-    }
-
-    // Merge sources into a single canonical list
-    const canonical = mergeCanonicalSources([canonicalFromITunes, canonicalFromTags, overrides]);
 
     // Ensure a Last.fm status block exists and update it
     let s = document.getElementById("lastfmStatus");
@@ -859,81 +714,32 @@ async function onITunesTrackSelected(track) {
       s = document.createElement("div");
       s.className = "info-section";
       s.id = "lastfmStatus";
-      const infoContent = document.getElementById("infoContent");
-      if (infoContent) infoContent.appendChild(s);
+      const infoContentEl = document.getElementById("infoContent");
+      if (infoContentEl) infoContentEl.appendChild(s);
     }
 
     if (combinedTags.length) {
-      s.innerHTML = `<div class=\"info-label\">Last.fm tags</div><div class=\"info-main\">${combinedTags.slice(0,8).join(", ")}</div>`;
+      s.innerHTML = `<div class="info-label">Last.fm tags</div><div class="info-main">${combinedTags.slice(0,8).join(", ")}</div>`;
     } else {
-      s.innerHTML = `<div class=\"info-label\">Last.fm tags</div><div class=\"info-main\">No tags found.</div>`;
+      s.innerHTML = `<div class="info-label">Last.fm tags</div><div class="info-main">No tags found.</div>`;
     }
 
-    // render the canonical genres as interactive chips
-    if (canonical.length) {
-      renderGenreChips(canonical);
-    } else {
-      infoContent.innerHTML += `<div class=\"info-section\"><div class=\"info-label\">Mapped genres</div><div class=\"info-main\">No canonical genres detected.</div></div>`;
+    // Render the raw Last.fm tags as chips (deduped)
+    if (combinedTags.length) {
+      renderGenreChips(combinedTags);
     }
 
-    highlightCanonicalGenresOnGraph(canonical);
-      // Build a track-centered graph: central node for the track connected to its Last.fm tags
-      buildTrackGenreGraph(track, combinedTags || []);
+    // Build a track-centered graph: central node for the track connected to its Last.fm tags
+    buildTrackGenreGraph(track, combinedTags || []);
   } catch (err) {
-    console.error("Error fetching Last.fm tags or mapping genres", err);
-    // fallback: highlight whatever we got from iTunes
-    // show error in status block if present
+    console.error("Error fetching Last.fm tags", err);
     const s = document.getElementById("lastfmStatus");
     if (s) s.innerHTML = `<div class="info-label">Last.fm</div><div class="info-main">Error fetching tags</div>`;
-    highlightCanonicalGenresOnGraph(canonicalFromITunes);
+    // still build a minimal graph with no tags
+    buildTrackGenreGraph(track, []);
   }
 }
 
-
-// -------------------------------------------------------
-// Graph highlighting helpers
-// -------------------------------------------------------
-
-function highlightCanonicalGenresOnGraph(canonicalGenres) {
-  if (!svg) return;
-
-  // Reset all nodes to default
-  svg.selectAll("circle.genre-node").attr("fill", "#3d365b").attr("r", 9).attr("opacity", 1);
-
-  if (!canonicalGenres || canonicalGenres.length === 0) {
-    // show a small message in info panel
-    const infoContent = document.getElementById("infoContent");
-    infoContent.innerHTML += `<div class=\"info-section\"><div class=\"info-label\">Genre mapping</div><div class=\"info-main\">No canonical genre mapping available for this track.</div></div>`;
-    return;
-  }
-
-  // Highlight matches (case-insensitive)
-  canonicalGenres.forEach((g) => {
-    const sel = svg.selectAll("circle.genre-node").filter((d) => {
-      // match either the node id or the display label (both case-insensitive)
-      return (d.id && d.id.toLowerCase() === g.toLowerCase()) || (d.label && d.label.toLowerCase() === g.toLowerCase());
-    });
-
-    sel
-      .attr("fill", "#b36cff")
-      .attr("r", 14)
-      .attr("opacity", 1)
-      .each(function (d) {
-        // small pulse animation
-        d3.select(this)
-          .transition()
-          .duration(600)
-          .attr("r", 18)
-          .transition()
-          .duration(400)
-          .attr("r", 14);
-      });
-  });
-
-  // Also update info panel to show the highlighted canonical genres
-  const infoContent = document.getElementById("infoContent");
-  infoContent.innerHTML += `<div class=\"info-section\"><div class=\"info-label\">Mapped genres</div><div class=\"info-main\">${canonicalGenres.join(", ")}</div></div>`;
-}
 
 
 // -------------------------------------------------------
@@ -966,17 +772,7 @@ function buildTrackGenreGraph(track, tags) {
   });
 
   // Optionally: also add canonical genre nodes for any mapped tags (lightweight)
-  try {
-    const mapped = mapTagsToCanonical(uniq);
-    mapped.forEach((g) => {
-      const gid = `GENRE:${g}`;
-      add({ id: gid, label: g, type: 'genre' });
-      // link central to canonical genre as a secondary relation
-      links.push({ source: centralId, target: gid });
-    });
-  } catch (e) {
-    console.debug('No mapping to canonical genres for tags', e);
-  }
+  // No curated canonical mappings — only track and tag nodes are shown here.
 
   renderGraph(nodes, links, `Track: ${track.trackName} — ${track.artistName}`);
 }
@@ -988,6 +784,7 @@ function buildTrackGenreGraph(track, tags) {
 async function buildGenreFocusGraph(genreName) {
   if (!genreName) return;
   const name = String(genreName).trim();
+
   const nodes = [];
   const links = [];
   const map = new Map();
@@ -1000,39 +797,27 @@ async function buildGenreFocusGraph(genreName) {
     return map.get(n.id);
   }
 
-  // Try to find the genre in curated data
-  const match = genreData && genreData.genreGraph && genreData.genreGraph.find((g) => g.id.toLowerCase() === name.toLowerCase());
+  // central genre node
+  const centralId = `GENRE:${name}`;
+  add({ id: centralId, label: name, type: 'genre', isCentral: true });
 
-  // If we have a curated node, include it plus its parents and children; otherwise create a single node
-  if (match) {
-    add({ id: `GENRE:${match.id}`, label: match.id, type: 'genre', region: match.region, decade: match.decade, isCentral: true });
-
-    (match.parents || []).forEach((p) => {
-      // find parent node details if available
-      const pmatch = genreData.genreGraph.find((gg) => gg.id.toLowerCase() === (p||'').toLowerCase());
-      if (pmatch) {
-        add({ id: `GENRE:${pmatch.id}`, label: pmatch.id, type: 'genre', region: pmatch.region, decade: pmatch.decade });
-      } else {
-        add({ id: `GENRE:${p}`, label: p, type: 'genre', isPlaceholder: true });
-      }
-      links.push({ source: `GENRE:${p}`, target: `GENRE:${match.id}` });
-    });
-
-    // children: find nodes that list this genre as parent
-    (genreData.genreGraph || []).forEach((gg) => {
-      if ((gg.parents || []).some((pid) => (pid||'').toLowerCase() === match.id.toLowerCase())) {
-        add({ id: `GENRE:${gg.id}`, label: gg.id, type: 'genre', region: gg.region, decade: gg.decade });
-        links.push({ source: `GENRE:${match.id}`, target: `GENRE:${gg.id}` });
-      }
-    });
-  } else {
-    // no curated info: create single node and try to enrich via Wikipedia
-    add({ id: `GENRE:${name}`, label: name, type: 'genre', isCentral: true });
+  // Fetch subgenres from Wikipedia categories
+  let subgenres = [];
+  try {
+    subgenres = await fetchSubgenresFromWikipedia(name, 24);
+  } catch (e) {
+    console.error('Error fetching subgenres from Wikipedia', e);
   }
+
+  subgenres.forEach((title) => {
+    const sid = `SUBGENRE:${title}`;
+    add({ id: sid, label: title, type: 'genre' });
+    links.push({ source: centralId, target: sid });
+  });
 
   renderGraph(nodes, links, `Genre: ${name}`);
 
-  // Update right info panel with Wikipedia summary (no preview or artwork)
+  // Update right-hand info panel with Wikipedia summary
   const infoTitle = document.getElementById('infoTitle');
   const infoContent = document.getElementById('infoContent');
   infoTitle.textContent = name;
@@ -1040,7 +825,7 @@ async function buildGenreFocusGraph(genreName) {
   try {
     const wiki = await fetchGenreSummaryFromWikipedia(name);
     infoContent.innerHTML = `
-      <div class="info-section"><div class="info-label">Summary</div><div class="info-main">${wiki?.extract || 'No summary found.'}</div></div>
+      <div class="info-section"><div class="info-label">${wiki?.title || name}</div><div class="info-main">${wiki?.extract || 'No summary found.'}</div></div>
       ${wiki?.url ? `<div class="info-section"><a href="${wiki.url}" target="_blank">Read more on Wikipedia</a></div>` : ''}
     `;
   } catch (e) {
