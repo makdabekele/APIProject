@@ -450,7 +450,7 @@ async function renderWikiInfoForLabel(label) {
     const wiki = await fetchGenreSummaryFromWikipedia(label);
     if (wiki) {
       infoContent.innerHTML = `
-        ${currentTrack ? `<button id="backToTrackBtn" class="back-btn" style="margin-bottom: 1rem; padding: 0.5rem 1rem; background: #6c5ce7; color: #fff; border: none; border-radius: 4px; cursor: pointer;">← Back to track</button>` : ''}
+        ${currentTrack ? `<button id="backToTrackBtn" class="back-btn" style="margin-bottom: 1rem; padding: 0.5rem 1rem; background: #00d0ff; color: #fff; border: none; border-radius: 4px; cursor: pointer;">← Back to track</button>` : ''}
         <div class="info-section">
           <div class="info-label">${wiki.title}</div>
           <div class="info-main">${wiki.extract}</div>
